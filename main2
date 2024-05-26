@@ -1,0 +1,711 @@
+#include <iostream>
+#include <iomanip>
+#include <cmath>
+#include <limits>
+#include <list>
+#include <iomanip>
+#include <array>
+
+// Linear algebra
+using vec2 = std::array<double,2>;
+using arr22 = std::array<double,4>;
+
+vec2 operator*(const vec2& a, const double& b)
+{
+    vec2 res{};
+
+    for (size_t i = 0; i < a.size(); i++)
+        res[i] = a[i] * b;
+
+    return res;
+}
+
+vec2 operator*(const double& a, const vec2& b)
+{
+    return b * a;
+}
+
+vec2 operator+(const vec2& a, const vec2& b)
+{
+    vec2 res{};
+
+    for (size_t i = 0; i < a.size(); i++)
+        res[i] = a[i] + b[i];
+
+    return res;
+}
+
+vec2 operator-(const vec2& a, const vec2& b)
+{
+    return a + (-1) * b;
+}
+
+arr22 operator*(const arr22& a, const double& b)
+{
+    arr22 res{};
+
+    for (size_t i = 0; i < a.size(); i++)
+        res[i] = a[i] * b;
+
+    return res;
+}
+
+arr22 operator*(const double& a, const arr22& b)
+{
+    return b * a;
+}
+
+arr22 operator+(const arr22& a, const arr22& b)
+{
+    arr22 res{};
+
+    for (size_t i = 0; i < a.size(); i++)
+        res[i] = a[i] + b[i];
+
+    return res;
+}
+
+arr22 operator-(const arr22& a, const arr22& b)
+{
+    return a + (-1) * b;
+}
+
+vec2 operator*(const arr22& a, const vec2& b)
+{
+    vec2 res{};
+
+    res[0] = a[0] * b[0] + a[1] * b[1];
+    res[1] = a[2] * b[0] + a[3] * b[1];
+
+    return res;
+}
+
+arr22 operator*(const arr22& a, const arr22& b)
+{
+    arr22 res{};
+
+    res[0] = a[0] * b[0] + a[1] * b[2];
+    res[1] = a[0] * b[1] + a[1] * b[3];
+    res[2] = a[2] * b[0] + a[3] * b[2];
+    res[3] = a[2] * b[1] + a[3] * b[3];
+
+    return res;
+}
+
+std::ostream& operator<<(std::ostream& a, const vec2& b)
+{
+    a << "[";
+
+    for (size_t i = 0; i < b.size(); i++)
+    {
+        if (i < b.size() - 1)
+            a << b[i] << ", ";
+        else
+            a << b[i];
+    }
+    
+    a << "]";
+
+    return a;
+}
+
+double det(const arr22& a)
+{
+    return (a[0] * a[3]) - (a[1] * a[2]);
+}
+
+arr22 adj(const arr22& a)
+{
+    arr22 res{};
+
+    res[0] = a[3];
+    res[1] = -a[1];
+    res[2] = -a[2];
+    res[3] = a[0];
+
+    return res;
+}
+
+arr22 inv(const arr22& a)
+{
+    return 1 / det(a) * adj(a);
+}
+
+// Test 
+vec2 test_system(const vec2& x, double t)
+{
+    constexpr double alpha{0.1};
+    constexpr double beta{0.02};
+    constexpr double gamma{0.4};
+    constexpr double delta{0.02};
+
+    vec2 xp{};
+
+    xp[0] = x[0] * (alpha - beta * x[1]);
+    xp[1] = x[1] * (delta * x[0] - gamma);
+
+    return xp;
+}
+
+const double g_t_start = 0.0;
+const double g_t_end = 1;
+
+// Options for implicit solver
+struct explicit_solver_options
+{
+    const double h = 0.05;
+};
+
+// Options for implicit solver
+struct implicit_solver_options
+{
+    const double h = 0.05;
+
+    const int max_iter = 1;
+
+    const double rel_tol = 1e-8;
+    const double abs_tol = 1e-6;
+
+    const int order = 1;
+};
+
+// Options for adaptive solver
+struct adaptive_solver_options
+{
+    const double h = 10.0;
+    const double h_min = 0.0001;
+    const double h_max = 1.0;
+
+    const double rel_tol = 1e-3;
+    const double abs_tol = 1e-6;
+};
+
+
+// Newton iteration 
+vec2 newton(vec2 x, double t, double h, vec2 x_i, vec2 (*test_system)(const vec2&, double), implicit_solver_options& options, const arr22& Jg_inv, bool reset_counter = true)
+{
+    //static const double eps = std::pow(std::numeric_limits<double>::epsilon(), 1.0/2.0);
+
+    //double dfdx = (test_system(x_i + eps / 2.0, t+h) - test_system(x_i - eps / 2.0, t+h)) / eps;
+    //double dfdx = (test_system(x + eps / 2.0, t+h) - test_system(x - eps / 2.0, t+h)) / eps;
+
+    vec2 g = x_i - x - h * test_system(x_i, t + h);
+
+    vec2 x_i_p_1 = x_i - Jg_inv * g;
+
+    static int counter = 1;
+    if (reset_counter)
+        counter = 1;
+    else
+        ++counter;
+
+    //double abs_tol = std::abs(x_i - x_i_p_1);
+    //double rel_tol = std::abs(1 - x_i / x_i_p_1);
+
+    if (/*(abs_tol <= options.abs_tol) ||
+        (rel_tol <= options.rel_tol) ||*/
+        (counter >= options.max_iter))
+        return x_i_p_1;
+    else
+        return newton(x, t, h, x_i_p_1, test_system, options, Jg_inv, false);
+}
+
+// Euler
+void ode1(vec2& x, double& t, explicit_solver_options options, vec2 (*test_system)(const vec2&, double))
+{
+    vec2 k1 = test_system(x, t);
+
+    t += options.h;
+    x = x + options.h * k1;
+}
+
+// Heun
+void ode2(vec2& x, double& t, explicit_solver_options options, vec2 (*test_system)(const vec2&, double))
+{
+    vec2 k1 = test_system(x, t);
+    vec2 k2 = test_system(x + options.h * k1, t + options.h);
+
+    t += options.h;
+    x = x + 1.0/2.0 * options.h * (k1 + k2);
+}
+
+// Bogacki–Shampine
+void ode3(vec2& x, double& t, explicit_solver_options options, vec2 (*test_system)(const vec2&, double))
+{
+    vec2 k1 = test_system(x, t);
+    vec2 k2 = test_system(x + 1.0 / 2.0 * options.h * k1, t + 1.0 / 2.0 * options.h);
+    vec2 k3 = test_system(x + 3.0 / 4.0 * options.h * k2, t + 3.0 / 4.0 * options.h);
+
+    t += options.h;
+    x = x + options.h * (2.0/9.0 * k1 + 1.0/3.0 * k2 + 4.0/9.0 * k3);
+}
+
+// Runge-Kutta 4
+void ode4(vec2& x, double& t, explicit_solver_options options, vec2 (*test_system)(const vec2&, double))
+{
+    vec2 k1 = test_system(x, t);
+    vec2 k2 = test_system(x + 1.0 / 2.0 * options.h * k1, t + 1.0 / 2.0 * options.h);
+    vec2 k3 = test_system(x + 1.0 / 2.0 * options.h * k2, t + 1.0 / 2.0 * options.h);
+    vec2 k4 = test_system(x + options.h * k3, t + options.h);
+
+    t += options.h;
+    x = x + options.h * 1.0/6.0 * (k1 + 2.0 * k2 + 2.0 * k3 + k4);
+}
+
+// Dormand-Prince (fifth order)
+void ode5(vec2& x, double& t, explicit_solver_options options, vec2 (*test_system)(const vec2&, double))
+{
+    vec2 k1 = test_system(x, t);
+    vec2 k2 = test_system(x + 1.0 / 5.0 * options.h * k1, t + 1.0 / 5.0 * options.h);
+    vec2 k3 = test_system(x + 3.0 / 40.0 * options.h * k1 + 9.0 / 40.0 * options.h * k2, t + 3.0 / 10.0 * options.h);
+    vec2 k4 = test_system(x + 44.0 / 45.0 * options.h * k1 - 56.0 / 15.0 * options.h * k2 + 32.0 / 9.0 * options.h * k3, t + 8.0 / 10.0 * options.h);
+    vec2 k5 = test_system(x + 19372.0 / 6561.0 * options.h * k1 - 25360.0 / 2187.0 * options.h * k2 + 64448.0 / 6561.0 * options.h * k3 - 212.0 / 729.0 * options.h * k4, t + 8.0 / 9.0 * options.h);
+    vec2 k6 = test_system(x + 9017.0 / 3168.0 * options.h * k1 - 355.0 / 33.0 * options.h * k2 + 46732.0 / 5247.0 * options.h * k3 + 49.0 / 176.0 * options.h * k4 - 5103.0 / 18656.0 * options.h * k5, t + options.h);
+
+    t += options.h;
+    x = x + options.h * (35.0/384.0 * k1 + 500.0/1113.0 * k3 + 125.0/192.0 * k4 - 2187.0/6784.0 * k5 + 11.0/84.0 * k6);
+}
+
+// Dormand-Prince (eight order)
+void ode8(vec2& x, double& t, explicit_solver_options options, vec2 (*test_system)(const vec2&, double))
+{
+    vec2 k1 = test_system(x, t);
+    vec2 k2 = test_system(x + 1.0 / 18.0 * options.h * k1, t + 1.0 / 18.0 * options.h);
+    vec2 k3 = test_system(x + 1.0 / 48.0 * options.h * k1 + 1.0 / 16.0 * options.h * k2, t + 1.0 / 12.0 * options.h);
+    vec2 k4 = test_system(x + 1.0 / 32.0 * options.h * k1 + 3.0 / 32.0 * options.h * k3, t + 1.0 / 8.0 * options.h);
+    vec2 k5 = test_system(x + 5.0 / 16.0 * options.h * k1 - 75.0 / 64.0 * options.h * k3 + 75.0 / 64.0 * options.h * k4, t + 5.0 / 16.0 * options.h);
+    vec2 k6 = test_system(x + 3.0 / 80.0 * options.h * k1 + 3.0 / 16.0 * options.h * k4 + 3.0 / 20.0 * options.h * k5, t + 3.0 / 8.0 * options.h);
+    vec2 k7 = test_system(x + 29443841.0 / 614563906.0 * options.h * k1 + 77736538.0 / 692538347.0 * options.h * k4 - 28693883.0 / 1125000000.0 * options.h * k5 + 23124283.0 / 1800000000.0 * options.h * k6, t + 59.0 / 400.0 * options.h);
+    vec2 k8 = test_system(x + 16016141.0 / 946692911.0 * options.h * k1 + 61564180.0 / 158732637.0 * options.h * k4 + 22789713.0 / 633445777.0 * options.h * k5 + 545815736.0 / 2771057229.0 * options.h * k6 - 180193667.0 / 1043307555.0 * options.h * k7, t + 93.0 / 200.0 * options.h);
+    vec2 k9 = test_system(x + 39632708.0 / 573591083.0 * options.h * k1 - 433636366.0 / 683701615.0 * options.h * k4 - 421739975.0 / 2616292301.0 * options.h * k5 + 100302831.0 / 723423059.0 * options.h * k6 + 790204164.0 / 839813087.0 * options.h * k7 + 800635310.0 / 3783071287.0 * options.h * k8, t + 5490023248.0 / 9719169821.0 * options.h);
+    vec2 k10 = test_system(x + 246121993.0 / 1340847787.0 * options.h * k1 - 37695042795.0 / 15268766246.0 * options.h * k4 - 309121744.0 / 1061227803.0 * options.h * k5 - 12992083.0 / 490766935.0 * options.h * k6 + 6005943493.0 / 2108947869.0 * options.h * k7 + 393006217.0 / 1396673457.0 * options.h * k8 + 123872331.0 / 1001029789.0 * options.h * k9, t + 13.0 / 20.0 * options.h);
+    vec2 k11 = test_system(x - 1028468189.0 / 846180014.0 * options.h * k1 + 8478235783.0 / 508512852.0 * options.h * k4 + 1311729495.0 / 1432422823.0 * options.h * k5 - 10304129995.0 / 1701304382.0 * options.h * k6 - 48777925059.0 / 3047939560.0 * options.h * k7 + 15336726248.0 / 1032824649.0 * options.h * k8 - 45442868181.0 / 3398467696.0 * options.h * k9 + 3065993473.0 / 597172653.0 * options.h * k10, t + 1201146811.0 / 1299019798.0 * options.h);
+    vec2 k12 = test_system(x + 185892177.0 / 718116043.0 * options.h * k1 - 3185094517.0 / 667107341.0 * options.h * k4 - 477755414.0 / 1098053517.0 * options.h * k5 - 703635378.0 / 230739211.0 * options.h * k6 + 5731566787.0 / 1027545527.0 * options.h * k7 + 5232866602.0 / 850066563.0 * options.h * k8 - 4093664535.0 / 808688257.0 * options.h * k9 + 3962137247.0 / 1805957418.0 * options.h * k10 + 65686358.0 / 487910083.0 * options.h * k11, t + options.h);
+    vec2 k13 = test_system(x + 403863854.0 / 491063109.0 * options.h * k1 - 5068492393.0 / 434740067.0 * options.h * k4 - 411421997.0 / 543043805.0 * options.h * k5 + 652783627.0 / 914296604.0 * options.h * k6 + 11173962825.0 / 925320556.0 * options.h * k7 - 13158990841.0 / 6184727034.0 * options.h * k8 + 3936647629.0 / 1978049680.0 * options.h * k9 - 160528059.0 / 685178525.0 * options.h * k10 + 248638103.0 / 1413531060.0 * options.h * k11, t + options.h);
+    
+    t += options.h;
+    x = x + options.h * (14005451.0/335480064.0 * k1 - 59238493.0/1068277825.0 * k6 + 181606767.0/758867731.0 * k7 + 561292985.0/797845732.0 * k8 - 1041891430.0/1371343529.0 * k9 + 760417239.0/1151165299.0 * k10 + 118820643.0/751138087.0 * k11 - 528747749.0/2220607170.0 * k12 + 1.0/4.0 * k13);
+    //return x + options.h * (13451932.0/455176623.0 * k1 - 808719846.0/976000145.0 * k6 + 1757004468.0/5645159321.0 * k7 + 656045339.0/265891186.0 * k8 - 3867574721.0/1518517206.0 * k9 + 465885868.0/322736535.0 * k10 + 53011238.0/667516719.0 * k11 - 2.0/45.0 * k12);
+}
+
+
+// Backward Euler
+void ode1be(vec2& x, double& t, implicit_solver_options options, vec2 (*test_system)(const vec2&, double))
+{
+    static const double eps = std::pow(std::numeric_limits<double>::epsilon(), 1.0 / 3.0);
+
+    vec2 eps_v1{ eps , 0 };
+    vec2 eps_v2{ 0 , eps };
+
+    vec2 temp1 = test_system(x + eps_v1, t);
+    vec2 temp2 = test_system(x - eps_v1, t);
+    vec2 temp3 = test_system(x + eps_v2, t);
+    vec2 temp4 = test_system(x - eps_v2, t);
+
+    double dfdx11 = (temp1[0] - temp2[0]) / (2.0 * eps);
+    double dfdx12 = (temp3[1] - temp4[1]) / (2.0 * eps);
+    double dfdx21 = (temp1[0] - temp2[0]) / (2.0 * eps);
+    double dfdx22 = (temp3[1] - temp4[1]) / (2.0 * eps);
+
+    arr22 dfdx{ dfdx11, dfdx12, dfdx21, dfdx22 };
+    arr22 unit{ 1.0, 0.0, 0.0, 1.0 };
+    arr22 dg{ unit - options.h * dfdx };
+    arr22 dg_inv{ inv(dg) };
+
+    t += options.h;
+    x = newton(x, t, options.h, x, test_system, options, dg_inv);
+}
+
+// Backward Euler with Richardson Extrapolation
+void ode14x(vec2& x, double& t, implicit_solver_options& options, vec2 (*test_system)(const vec2&, double))
+{
+    static const double eps = std::pow(std::numeric_limits<double>::epsilon(), 1.0 / 3.0);
+
+    vec2 eps_v1{ eps , 0 };
+    vec2 eps_v2{ 0 , eps };
+
+    vec2 temp1 = test_system(x + eps_v1, t);
+    vec2 temp2 = test_system(x - eps_v1, t);
+    vec2 temp3 = test_system(x + eps_v2, t);
+    vec2 temp4 = test_system(x - eps_v2, t);
+
+    double dfdx11 = (temp1[0] - temp2[0]) / (2.0 * eps);
+    double dfdx12 = (temp3[1] - temp4[1]) / (2.0 * eps);
+    double dfdx21 = (temp1[0] - temp2[0]) / (2.0 * eps);
+    double dfdx22 = (temp3[1] - temp4[1]) / (2.0 * eps);
+
+    arr22 dfdx{ dfdx11, dfdx12, dfdx21, dfdx22 };
+    arr22 unit{ 1.0, 0.0, 0.0, 1.0 };
+    arr22 dg{ unit - options.h * dfdx };
+    arr22 dg_inv{ inv(dg) };
+
+    auto newton_intermediate_steps = [](vec2 x, double t, double h, vec2 x_i, int number_of_steps, vec2 (*test_system)(const vec2&, double), implicit_solver_options& options, arr22 dg_inv)
+    {
+        double hN = h / number_of_steps;
+        vec2 result = newton(x, t, hN, x, test_system, options, dg_inv);
+
+        for (size_t i = 1; i < number_of_steps; i++)
+            result = newton(result, t + i * hN, hN, result, test_system, options, dg_inv);
+
+        return result;
+    };
+
+    vec2 result1{ std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN() };
+    vec2 result2{ std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN() };
+    vec2 result3{ std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN() };
+    vec2 result4{ std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN() };
+
+    if (options.order > 0)
+        result1 = newton_intermediate_steps(x, t, options.h, x, 12, test_system, options, dg_inv);
+
+    if (options.order > 1)
+        result2 = newton_intermediate_steps(x, t, options.h, x, 8, test_system, options, dg_inv);
+
+    if (options.order > 2)
+        result3 = newton_intermediate_steps(x, t, options.h, x, 6, test_system, options, dg_inv);
+
+    if (options.order > 3)
+        result4 = newton_intermediate_steps(x, t, options.h, x, 4, test_system, options, dg_inv);
+
+    if (options.order > 1)
+        result1 = result2 - 3 * (result2 - result1);
+
+    if (options.order > 2)
+    {
+        result2 = result3 - 4 * (result3 - result2);
+        result1 = result2 - 2 * (result2 - result1);
+    }
+
+    if (options.order > 3)
+    {
+        result3 = result4 - 3 * (result4 - result3);
+        result2 = result3 - 2 * (result3 - result2);
+        result1 = result2 - 1.5 * (result2 - result1);
+    }
+
+    t += options.h;
+    x = result1;
+}
+
+#if 0
+// Bogacki–Shampine (adaptive)
+void ode23(vec2& x, double& t, adaptive_solver_options& options, vec2 (*test_system)(const vec2&, double))
+{
+    static double h{ options.h };
+
+    for (size_t i = 0; true; i++)
+    {
+        // Hit the simulation end time exactly
+        if ((t + h > g_t_end || h > 10.0 / 11.0  * (g_t_end - t)) && i == 0)
+            h = (g_t_end - t);
+
+        double k1 = test_system(x, t);
+        double k2 = test_system(x + 1.0 / 2.0 * h * k1, t + 1.0 / 2.0 * h);
+        double k3 = test_system(x + 3.0 / 4.0 * h * k2, t + 3.0 / 4.0 * h);
+        double xr = x + h * (2.0 / 9.0 * k1 + 1.0 / 3.0 * k2 + 4.0 / 9.0 * k3);
+        double k4 = test_system(xr, t+h);
+        double zr = x + h * (7.0 / 24.0 * k1 + 1.0 / 4.0 * k2 + 1.0 / 3.0 * k3 + 1.0 / 8.0 * k4);
+        double e = abs(xr - zr);
+
+        double eTh = std::max(options.rel_tol * std::abs(x), options.abs_tol);
+        double h_temp = std::max(0.5, std::min(5.0, 0.8 * std::pow(eTh / e, 1.0 / (2.0 + 1.0)))) * h;
+
+        if (h_temp < options.h_min)
+            h_temp = options.h_min;
+
+        if (h_temp > options.h_max)
+            h_temp = options.h_max;
+
+        if (e <= eTh)
+        {
+            t += h;
+
+            if (i == 0)
+                h = h_temp;
+
+            x = xr;
+            return;
+        }
+
+        if (i == 0)
+            h = h_temp;
+        else if (i > 0)
+            h = 0.5 * h;
+    }
+}
+
+// Dormand-Prince (adaptive)
+void ode45(vec2& x, double& t, adaptive_solver_options options, vec2 (*test_system)(const vec2&, double))
+{
+    static double h{ options.h };
+
+    for (size_t i = 0; true; i++)
+    {
+        // Hit the simulation end time exactly
+        if ((t + h > g_t_end || h > 10.0 / 11.0 * (g_t_end - t)) && i == 0)
+            h = (g_t_end - t);
+
+        double k1 = test_system(x, t);
+        double k2 = test_system(x + 1.0 / 5.0 * h * k1, t + 1.0 / 5.0 * h);
+        double k3 = test_system(x + 3.0 / 40.0 * h * k1 + 9.0 / 40.0 * h * k2, t + 3.0 / 10.0 * h);
+        double k4 = test_system(x + 44.0 / 45.0 * h * k1 - 56.0 / 15.0 * h * k2 + 32.0 / 9.0 * h * k3, t + 8.0 / 10.0 * h);
+        double k5 = test_system(x + 19372.0 / 6561.0 * h * k1 - 25360.0 / 2187.0 * h * k2 + 64448.0 / 6561.0 * h * k3 - 212.0 / 729.0 * h * k4, t + 8.0 / 9.0 * h);
+        double k6 = test_system(x + 9017.0 / 3168.0 * h * k1 - 355.0 / 33.0 * h * k2 + 46732.0 / 5247.0 * h * k3 + 49.0 / 176.0 * h * k4 - 5103.0 / 18656.0 * h * k5, t + h);
+        double xr = x + h * (35.0 / 384.0 * k1 + 500.0 / 1113.0 * k3 + 125.0 / 192.0 * k4 - 2187.0 / 6784.0 * k5 + 11.0 / 84.0 * k6);
+        double k7 = test_system(xr, t + h);
+        double zr = x + h * (5179.0 / 57600.0 * k1 + 7571.0 / 16695.0 * k3 + 393.0 / 640.0 * k4 - 92097.0 / 339200.0 * k5 + 187.0 / 2100.0 * k6 + 1.0 / 40.0 * k7);
+        double e = abs(xr - zr);
+
+        double eTh = std::max(options.rel_tol * std::abs(x), options.abs_tol);
+        double h_temp = std::max(std::sqrt(5.0)/10.0, std::min(5.0, 0.8 * std::pow(eTh / e, 1.0 / (4.0 + 1.0)))) * h;
+
+        if (h_temp < options.h_min)
+            h_temp = options.h_min;
+
+        if (h_temp > options.h_max)
+            h_temp = options.h_max;
+
+        if (e <= eTh)
+        {
+            t += h;
+
+            if (i == 0)
+                h = h_temp;
+
+            x = xr;
+            return;
+        }
+
+        if (i == 0)
+            h = h_temp;
+        else if (i > 0)
+            h = std::sqrt(5.0)/10.0 * h;
+    }
+}
+
+#endif
+
+/*
+// Dormand-Prince (adaptive)
+void ode45(double& x, double& t, adaptive_solver_options options, vec2 (*test_system)(const vec2&, double))
+{
+    static double h{ options.h };
+
+    for (size_t i = 0; true; i++)
+    {
+        // Hit the simulation end time exactly
+        if ((t + h > g_t_end || t + h > g_t_end - 0.25 * h) && i == 0)
+            h = (g_t_end - t);
+
+        double k1 = test_system(x, t);
+        double k2 = test_system(x + 1.0 / 5.0 * h * k1, t + 1.0 / 5.0 * h);
+        double k3 = test_system(x + 3.0 / 40.0 * h * k1 + 9.0 / 40.0 * h * k2, t + 3.0 / 10.0 * h);
+        double k4 = test_system(x + 44.0 / 45.0 * h * k1 - 56.0 / 15.0 * h * k2 + 32.0 / 9.0 * h * k3, t + 8.0 / 10.0 * h);
+        double k5 = test_system(x + 19372.0 / 6561.0 * h * k1 - 25360.0 / 2187.0 * h * k2 + 64448.0 / 6561.0 * h * k3 - 212.0 / 729.0 * h * k4, t + 8.0 / 9.0 * h);
+        double k6 = test_system(x + 9017.0 / 3168.0 * h * k1 - 355.0 / 33.0 * h * k2 + 46732.0 / 5247.0 * h * k3 + 49.0 / 176.0 * h * k4 - 5103.0 / 18656.0 * h * k5, t + h);
+        double xr = x + h * (35.0 / 384.0 * k1 + 500.0 / 1113.0 * k3 + 125.0 / 192.0 * k4 - 2187.0 / 6784.0 * k5 + 11.0 / 84.0 * k6);
+        double k7 = test_system(xr, t+h);
+        double zr = x + h * (5179.0 / 57600.0 * k1 + 7571.0 / 16695.0 * k3 + 393.0 / 640.0 * k4 - 92097.0 / 339200.0 * k5 + 187.0 / 2100.0 * k6 + 1.0 / 40.0 * k7);
+        double e = abs(xr - zr);
+
+        double eTh = std::max(options.rel_tol * std::abs(x), options.abs_tol);
+
+        double h_temp = std::max(0.5, std::min(5.0, 0.8 * std::pow(eTh / e, 1.0 / (4.0 + 1.0)))) * h;
+
+        if (h_temp < options.h_min)
+            h_temp = options.h_min;
+
+        if (h_temp > options.h_max)
+            h_temp = options.h_max;
+
+        if (e <= eTh)
+        {
+            t += h;
+            if (i == 0)
+                h = h_temp;
+
+            x = xr;
+            return;
+        }
+        else
+        {
+            if (t + h > g_t_end - h)
+                h = h_temp;
+            else
+                h = 0.5 * h;
+        }
+    }
+}
+*/
+
+int main()
+{
+    vec2 x;
+    std::cout << std::setprecision(15);
+
+    /*
+    {
+        x = {10, 10};
+
+        std::cout << "======== ODE1 ========" << std::endl;
+        std::cout << "t: " << 0.0 << std::endl;
+        std::cout << "x: " << x << std::endl << std::endl;
+
+        explicit_solver_options options;
+        for (double t = g_t_start; t < g_t_end;)
+        {
+            ode1(x, t, options, test_system);
+            std::cout << "t: " << t << std::endl;
+            std::cout << "x: " << x << std::endl << std::endl;
+        }
+    }
+
+    {
+        x = { 10, 10 };
+
+        std::cout << "======== ODE2 ========" << std::endl;
+        std::cout << "t: " << 0.0 << std::endl;
+        std::cout << "x: " << x << std::endl << std::endl;
+
+        explicit_solver_options options;
+        for (double t = g_t_start; t < g_t_end;)
+        {
+            ode2(x, t, options, test_system);
+            std::cout << "t: " << t << std::endl;
+            std::cout << "x: " << x << std::endl << std::endl;
+        }
+    }
+    
+    {
+        x = { 10, 10 };
+
+        std::cout << "======== ODE3 ========" << std::endl;
+        std::cout << "t: " << 0.0 << std::endl;
+        std::cout << "x: " << x << std::endl << std::endl;
+
+        explicit_solver_options options;
+        for (double t = g_t_start; t < g_t_end;)
+        {
+            ode3(x, t, options, test_system);
+            std::cout << "t: " << t << std::endl;
+            std::cout << "x: " << x << std::endl << std::endl;
+        }
+    }
+
+    {
+        x = { 10, 10 };
+
+        std::cout << "======== ODE4 ========" << std::endl;
+        std::cout << "t: " << 0.0 << std::endl;
+        std::cout << "x: " << x << std::endl << std::endl;
+
+        explicit_solver_options options;
+        for (double t = g_t_start; t < g_t_end;)
+        {
+            ode4(x, t, options, test_system);
+            std::cout << "t: " << t << std::endl;
+            std::cout << "x: " << x << std::endl << std::endl;
+        }
+    }
+
+    {
+        x = { 10, 10 };
+
+        std::cout << "======== ODE5 ========" << std::endl;
+        std::cout << "t: " << 0.0 << std::endl;
+        std::cout << "x: " << x << std::endl << std::endl;
+
+        explicit_solver_options options;
+        for (double t = g_t_start; t < g_t_end;)
+        {
+            ode5(x, t, options, test_system);
+            std::cout << "t: " << t << std::endl;
+            std::cout << "x: " << x << std::endl << std::endl;
+        }
+    }
+
+    {
+        x = { 10, 10 };
+
+        std::cout << "======== ODE8 ========" << std::endl;
+        std::cout << "t: " << 0.0 << std::endl;
+        std::cout << "x: " << x << std::endl << std::endl;
+
+        explicit_solver_options options;
+        for (double t = g_t_start; t < g_t_end;)
+        {
+            ode8(x, t, options, test_system);
+            std::cout << "t: " << t << std::endl;
+            std::cout << "x: " << x << std::endl << std::endl;
+        }
+    }
+    */
+
+    {
+        x = { 10, 10 };
+
+        std::cout << "======== ODE1BE ========" << std::endl;
+        std::cout << "t: " << 0.0 << std::endl;
+        std::cout << "x: " << x << std::endl << std::endl;
+
+        implicit_solver_options options;
+        for (double t = g_t_start; t < g_t_end;)
+        {
+            ode1be(x, t, options, test_system);
+            std::cout << "t: " << t << std::endl;
+            std::cout << "x: " << x << std::endl << std::endl;
+        }
+    }
+
+    {
+        x = {10, 10};
+
+        std::cout << "======== ODE14X ========" << std::endl;
+        std::cout << "t: " << 0.0 << std::endl;
+        std::cout << "x: " << x << std::endl << std::endl;
+
+        implicit_solver_options options;
+        for (double t = g_t_start; t < g_t_end;)
+        {
+            ode14x(x, t, options, test_system);
+            std::cout << "t: " << t << std::endl;
+            std::cout << "x: " << x << std::endl << std::endl;
+        }
+    }
+
+    /*
+    {
+       x = {10, 10};
+
+        std::cout << "======== ODE23 ========" << std::endl;
+        std::cout << "t: " << 0.0 << std::endl;
+        std::cout << "x: " << x << std::endl << std::endl;
+
+        adaptive_solver_options options;
+        for (double t = g_t_start; t < g_t_end;)
+        {
+            ode23(x, t, options, test_system);
+            std::cout << "t: " << t << std::endl;
+            std::cout << "x: " << x << std::endl << std::endl;
+        }
+    }
+    */
+
+    /*
+    {
+        x = {10, 10};
+
+        std::cout << "======== ODE45 ========" << std::endl;
+        std::cout << "t: " << 0.0 << std::endl;
+        std::cout << "x: " << x << std::endl << std::endl;
+
+        adaptive_solver_options options;
+        for (double t = g_t_start; t < g_t_end;)
+        {
+            ode45(x, t, options, test_system);
+            std::cout << "t: " << t << std::endl;
+            std::cout << "x: " << x << std::endl << std::endl;
+        }
+    }
+    */
+}
